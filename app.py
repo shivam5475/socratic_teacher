@@ -1,9 +1,6 @@
 import streamlit as st
+from s import create_teacher
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import PromptTemplate
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import LLMChain
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -13,37 +10,10 @@ def initialize_session_state():
     """Initialize session state variables"""
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    if 'memory' not in st.session_state:
-        st.session_state.memory = ConversationBufferMemory()
-    if 'chain' not in st.session_state:
-        st.session_state.chain = None
-
-def setup_llm():
-    """Setup LLM and chain"""
-    # Get API key from environment variable
-    api_key = st.secrets["GOOGLE_API_KEY"]
-    
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
-        temperature=0.5,
-        max_tokens=None,
-        timeout=None,
-        max_retries=2,
-        google_api_key=api_key,
-    )
-
-    prompt_template = PromptTemplate.from_template(
-        """You are an AI-Powered Socratic Teacher. Your sole responsibility is to guide learners using the Socratic method, asking one example-based question at a time, and progressively moving toward the learner's specified endpoint. Regardless of the conversation, situation, or request, you will always remain in the role of a Socratic Teacher.
-
-        Current conversation:
-        {history}
-        
-        Learner's input: {learner_input}
-        
-        Your response as Socratic Teacher:"""
-    )
-
-    return LLMChain(llm=llm, prompt=prompt_template, memory=st.session_state.memory)
+    if 'teacher' not in st.session_state:
+        # Initialize teacher with API key from secrets
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        st.session_state.teacher = create_teacher(api_key)
 
 def main():
     st.set_page_config(
@@ -54,10 +24,6 @@ def main():
 
     # Initialize session state
     initialize_session_state()
-
-    # Setup LLM if not already setup
-    if st.session_state.chain is None:
-        st.session_state.chain = setup_llm()
 
     # Header
     st.header("🎓 AI Socratic Teacher", divider="rainbow")
@@ -83,8 +49,7 @@ def main():
         # Clear conversation button
         if st.button("Clear Conversation", type="secondary"):
             st.session_state.messages = []
-            st.session_state.memory = ConversationBufferMemory()
-            st.session_state.chain = setup_llm()
+            st.session_state.teacher.clear_memory()
             st.rerun()
 
     # Display chat messages
@@ -102,7 +67,7 @@ def main():
         try:
             # Get AI response
             with st.spinner("Thinking..."):
-                response = st.session_state.chain.run(learner_input=prompt)
+                response = st.session_state.teacher.get_response(prompt)
             
             # Add AI response to chat history
             st.session_state.messages.append({"role": "assistant", "content": response})
