@@ -1,118 +1,108 @@
 import streamlit as st
-from s import create_teacher
-from dotenv import load_dotenv
-import time
-
-# Load environment variables
-load_dotenv()
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import PromptTemplate
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import LLMChain
 
 def initialize_session_state():
     """Initialize session state variables"""
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    if 'teacher' not in st.session_state:
-        try:
-            # Try to get API key from secrets
-            api_key = st.secrets.get("GOOGLE_API_KEY")
-            if not api_key:
-                st.error("🔑 Google API Key not found in secrets. Please configure it in Streamlit Cloud.")
-                st.stop()
-            st.session_state.teacher = create_teacher(api_key)
-            # Add welcome message
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": "Hello! I'm your Socratic Teacher. I'll help you learn through thoughtful questions and discussion. What topic would you like to explore today?"
-            })
-        except Exception as e:
-            st.error(f"❌ Error initializing teacher: {str(e)}")
-            st.stop()
+    if 'memory' not in st.session_state:
+        st.session_state.memory = ConversationBufferMemory()
+    if 'chain' not in st.session_state:
+        st.session_state.chain = None
 
-def display_chat_message(message, is_user=False):
-    """Display a chat message with typing animation for assistant"""
-    with st.chat_message("user" if is_user else "assistant"):
-        if is_user:
-            st.write(message)
-        else:
-            # Simulate typing for assistant messages
-            message_placeholder = st.empty()
-            full_response = message
-            for i in range(len(full_response) + 1):
-                message_placeholder.markdown(full_response[:i] + "▌")
-                time.sleep(0.01)
-            message_placeholder.markdown(full_response)
+def setup_llm():
+    """Setup LLM and chain"""
+    if "GOOGLE_API_KEY" not in os.environ:
+        os.environ["GOOGLE_API_KEY"] = "AIzaSyC2NE588QOHtkO02DGzbBQA5XoO8H3-hOM"
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-1.5-pro",
+        temperature=0.5,
+        max_tokens=None,
+        timeout=None,
+        max_retries=2,
+    )
+
+    prompt_template = PromptTemplate.from_template(
+        """You are an AI-Powered Socratic Teacher. Your sole responsibility is to guide learners using the Socratic method, asking one example-based question at a time, and progressively moving toward the learner's specified endpoint. Regardless of the conversation, situation, or request, you will always remain in the role of a Socratic Teacher.
+
+        Current conversation:
+        {history}
+        
+        Learner's input: {learner_input}
+        
+        Your response as Socratic Teacher:"""
+    )
+
+    return LLMChain(llm=llm, prompt=prompt_template, memory=st.session_state.memory)
 
 def main():
     st.set_page_config(
         page_title="AI Socratic Teacher",
         page_icon="🎓",
-        layout="centered",
-        initial_sidebar_state="expanded"
+        layout="centered"
     )
 
-    try:
-        # Initialize session state
-        initialize_session_state()
+    # Initialize session state
+    initialize_session_state()
 
-        # Header
-        st.header("🎓 AI Socratic Teacher", divider="rainbow")
+    # Setup LLM if not already setup
+    if st.session_state.chain is None:
+        st.session_state.chain = setup_llm()
+
+    # Header
+    st.header("🎓 AI Socratic Teacher", divider="rainbow")
+    
+    # Sidebar
+    with st.sidebar:
+        st.markdown("""
+        ## About
+        Welcome to the AI Socratic Teacher! This application uses the Socratic method 
+        to guide you through learning any topic through thoughtful questions and dialogue.
         
-        # Sidebar
-        with st.sidebar:
-            st.markdown("""
-            ## About
-            Welcome to the AI Socratic Teacher! This application uses the Socratic method 
-            to guide you through learning any topic through thoughtful questions and dialogue.
-            
-            ### How it works:
-            1. Enter your topic or question
-            2. Engage in a dialogue with the AI teacher
-            3. Learn through guided discovery
-            
-            ### Tips:
-            - Be specific about what you want to learn
-            - Take time to think about each question
-            - Explain your reasoning in your answers
-            - Ask for clarification if needed
-            """)
-            
-            # Clear conversation button
-            if st.button("Clear Conversation", type="secondary"):
-                st.session_state.messages = []
-                if hasattr(st.session_state, 'teacher'):
-                    st.session_state.teacher.clear_memory()
-                st.rerun()
+        ### How it works:
+        1. Enter your topic or question
+        2. Engage in a dialogue with the AI teacher
+        3. Learn through guided discovery
+        
+        ### Tips:
+        - Be specific about what you want to learn
+        - Take time to think about each question
+        - Explain your reasoning in your answers
+        """)
+        
+        # Clear conversation button
+        if st.button("Clear Conversation", type="secondary"):
+            st.session_state.messages = []
+            st.session_state.memory = ConversationBufferMemory()
+            st.session_state.chain = setup_llm()
+            st.rerun()
 
-        # Display chat messages
+    # Display chat messages
+    chat_container = st.container()
+    with chat_container:
         for message in st.session_state.messages:
-            display_chat_message(
-                message["content"], 
-                is_user=(message["role"] == "user")
-            )
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
 
-        # Chat input
-        if prompt := st.chat_input(
-            "What would you like to learn about?",
-            disabled=not hasattr(st.session_state, 'teacher')
-        ):
-            # Add user message to chat history
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            display_chat_message(prompt, is_user=True)
-            
-            try:
-                # Get AI response
-                with st.spinner("Thinking..."):
-                    response = st.session_state.teacher.get_response(prompt)
-                
-                # Add AI response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                display_chat_message(response)
-                
-            except Exception as e:
-                st.error(f"❌ An error occurred: {str(e)}")
-
-    except Exception as e:
-        st.error(f"❌ Application error: {str(e)}")
-        st.info("Please refresh the page and try again.")
+    # Chat input
+    if prompt := st.chat_input("What would you like to learn about?"):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Get AI response
+        with st.spinner("Thinking..."):
+            response = st.session_state.chain.run(learner_input=prompt)
+        
+        # Add AI response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        
+        # Rerun to update the chat display
+        st.rerun()
 
 if __name__ == "__main__":
     main()
