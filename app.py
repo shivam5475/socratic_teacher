@@ -4,6 +4,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def initialize_session_state():
     """Initialize session state variables"""
@@ -16,15 +20,16 @@ def initialize_session_state():
 
 def setup_llm():
     """Setup LLM and chain"""
-    if "GOOGLE_API_KEY" not in os.environ:
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyC2NE588QOHtkO02DGzbBQA5XoO8H3-hOM"
-
+    # Get API key from environment variable
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    
     llm = ChatGoogleGenerativeAI(
         model="gemini-1.5-pro",
         temperature=0.5,
         max_tokens=None,
         timeout=None,
         max_retries=2,
+        google_api_key=api_key,
     )
 
     prompt_template = PromptTemplate.from_template(
@@ -94,12 +99,15 @@ def main():
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Get AI response
-        with st.spinner("Thinking..."):
-            response = st.session_state.chain.run(learner_input=prompt)
-        
-        # Add AI response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        try:
+            # Get AI response
+            with st.spinner("Thinking..."):
+                response = st.session_state.chain.run(learner_input=prompt)
+            
+            # Add AI response to chat history
+            st.session_state.messages.append({"role": "assistant", "content": response})
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
         
         # Rerun to update the chat display
         st.rerun()
