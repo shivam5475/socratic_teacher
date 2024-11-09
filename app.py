@@ -20,7 +20,7 @@ def setup_llm():
         os.environ["GOOGLE_API_KEY"] = "AIzaSyC2NE588QOHtkO02DGzbBQA5XoO8H3-hOM"
 
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
+        model="gemini-1.5-flash",
         temperature=0.5,
         max_tokens=None,
         timeout=None,
